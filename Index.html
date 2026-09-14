@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event Reflection</title>
+<style>
+  :root {
+    --bg: #faf9f7;
+    --card: #ffffff;
+    --ink: #2b2b2b;
+    --muted: #7a7a7a;
+    --accent: #4a6fa5;
+    --accent-soft: #eef2f8;
+    --border: #e6e3dd;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 20px 16px 60px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 20px;
+  }
+  .q {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+  .q label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .q .hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  textarea {
+    width: 100%;
+    min-height: 64px;
+    border: none;
+    background: transparent;
+    resize: vertical;
+    font-size: 15px;
+    font-family: inherit;
+    color: var(--ink);
+    padding: 0;
+  }
+  textarea:focus { outline: none; }
+  .actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  button {
+    flex: 1;
+    border: none;
+    border-radius: 12px;
+    padding: 13px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .save { background: var(--accent); color: white; }
+  .clear { background: var(--accent-soft); color: var(--accent); }
+  .status {
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 10px;
+    min-height: 16px;
+  }
+  .history {
+    margin-top: 28px;
+  }
+  .history h2 {
+    font-size: 14px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+  }
+  .entry {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .entry .date {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .entry .field {
+    font-size: 13px;
+    margin-bottom: 4px;
+    line-height: 1.4;
+  }
+  .entry .field b {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .empty {
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 10px 0;
+  }
+  .delete-entry {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 11px;
+    padding: 4px 0 0;
+    flex: none;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<h1>When something happens</h1>
+<div class="sub">Answer these four questions to work through it.</div>
+
+<div class="q">
+  <label>1. What actually happened?</label>
+  <div class="hint">Just the facts — no interpretation yet.</div>
+  <textarea id="q1" placeholder="Type here..."></textarea>
+</div>
+
+<div class="q">
+  <label>2. What am I adding?</label>
+  <div class="hint">The story, meaning, or judgment you're layering on top.</div>
+  <textarea id="q2" placeholder="Type here..."></textarea>
+</div>
+
+<div class="q">
+  <label>3. What can this train in me?</label>
+  <div class="hint">The strength or skill this moment is an opportunity to build.</div>
+  <textarea id="q3" placeholder="Type here..."></textarea>
+</div>
+
+<div class="q">
+  <label>4. What can I do now?</label>
+  <div class="hint">One concrete next step.</div>
+  <textarea id="q4" placeholder="Type here..."></textarea>
+</div>
+
+<div class="actions">
+  <button class="clear" onclick="clearForm()">Clear</button>
+  <button class="save" onclick="saveEntry()">Save</button>
+</div>
+<div class="status" id="status"></div>
+
+<div class="history">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+    <h2 style="margin:0;">Past entries</h2>
+    <button onclick="copyAll()" style="flex:none; padding:6px 12px; font-size:12px; background:var(--accent-soft); color:var(--accent); border-radius:8px;">Copy All</button>
+  </div>
+  <div class="sub" style="margin-top:-6px; margin-bottom:14px;">Saved automatically on this device. Tap Copy All to back them up to Notes.</div>
+  <div id="exportBox" style="display:none; margin-bottom:14px;">
+    <div class="hint" style="margin-bottom:6px;">Tap inside, then Select All → Copy, and paste into Notes:</div>
+    <textarea id="exportText" readonly style="background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px; min-height:100px; font-size:13px;"></textarea>
+  </div>
+  <div id="historyList"></div>
+</div>
+
+<script>
+// Works because this will be hosted on a real https:// site —
+// Safari only blocks localStorage for local file:// pages.
+const STORAGE_KEY = 'reflection_entries';
+
+function getEntries() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function setEntries(entries) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  } catch (e) {}
+}
+
+function entriesToText(entries) {
+  const sorted = [...entries].sort((a, b) => a.timestamp - b.timestamp);
+  return sorted.map(e => {
+    const d = new Date(e.timestamp);
+    const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return `${dateStr}\nWhat happened: ${e.q1 || '—'}\nWhat I'm adding: ${e.q2 || '—'}\nWhat this trains: ${e.q3 || '—'}\nWhat I'll do: ${e.q4 || '—'}\n`;
+  }).join('\n');
+}
+
+function copyAll() {
+  const entries = getEntries();
+  if (!entries.length) {
+    setStatus('Nothing to copy yet.');
+    return;
+  }
+  const text = entriesToText(entries);
+  showExportText(text);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      () => setStatus('Copied — paste into Notes.'),
+      () => fallbackCopy(text)
+    );
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function showExportText(text) {
+  const box = document.getElementById('exportBox');
+  const ta = document.getElementById('exportText');
+  ta.value = text;
+  box.style.display = 'block';
+}
+
+function fallbackCopy(text) {
+  const ta = document.getElementById('exportText');
+  ta.focus();
+  ta.setSelectionRange(0, ta.value.length);
+  try {
+    const ok = document.execCommand('copy');
+    setStatus(ok ? 'Copied — paste into Notes.' : 'Tap the text below, then Select All and Copy.');
+  } catch (e) {
+    setStatus('Tap the text below, then Select All and Copy.');
+  }
+}
+
+function loadHistory() {
+  const listEl = document.getElementById('historyList');
+  const entries = getEntries();
+  if (!entries || entries.length === 0) {
+    listEl.innerHTML = '<div class="empty">No entries yet.</div>';
+    return;
+  }
+  const sorted = [...entries].sort((a, b) => b.timestamp - a.timestamp);
+  listEl.innerHTML = sorted.map(e => {
+    const d = new Date(e.timestamp);
+    const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return `
+      <div class="entry">
+        <div class="date">${dateStr}</div>
+        <div class="field"><b>What happened:</b> ${escapeHtml(e.q1)}</div>
+        <div class="field"><b>What I'm adding:</b> ${escapeHtml(e.q2)}</div>
+        <div class="field"><b>What this trains:</b> ${escapeHtml(e.q3)}</div>
+        <div class="field"><b>What I'll do:</b> ${escapeHtml(e.q4)}</div>
+        <button class="delete-entry" onclick="deleteEntry(${e.timestamp})">Delete</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function escapeHtml(str) {
+  if (!str) return '<span style="color:#bbb">—</span>';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function saveEntry() {
+  const q1 = document.getElementById('q1').value.trim();
+  const q2 = document.getElementById('q2').value.trim();
+  const q3 = document.getElementById('q3').value.trim();
+  const q4 = document.getElementById('q4').value.trim();
+
+  if (!q1 && !q2 && !q3 && !q4) {
+    setStatus('Write something first.');
+    return;
+  }
+
+  const timestamp = Date.now();
+  const entries = getEntries();
+  entries.push({ q1, q2, q3, q4, timestamp });
+  setEntries(entries);
+  setStatus('Saved.');
+  clearForm(false);
+  loadHistory();
+}
+
+function deleteEntry(timestamp) {
+  const entries = getEntries().filter(e => e.timestamp !== timestamp);
+  setEntries(entries);
+  loadHistory();
+}
+
+function clearForm(showStatus = true) {
+  ['q1','q2','q3','q4'].forEach(id => document.getElementById(id).value = '');
+  if (showStatus) setStatus('Cleared.');
+}
+
+function setStatus(msg) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 2500);
+}
+
+loadHistory();
+</script>
+
+</body>
+</html>
